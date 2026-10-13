@@ -168,17 +168,6 @@ restsecure.py
 
 ---
 
-## Disclaimer
-
-REST Secure performs active security testing including sending injection payloads, authentication probes, and endpoint discovery requests. **Only use against APIs you own or have explicit written authorization to test.** Unauthorized testing may violate applicable laws and regulations.
-
----
-
-## License
-
-MIT License — see [LICENSE](LICENSE).
-
----
 
 <div align="center">
   <sub>REST Secure — API Security Testing Framework</sub><br>
