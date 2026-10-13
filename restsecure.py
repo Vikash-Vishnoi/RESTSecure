@@ -4,8 +4,6 @@ REST Secure — API Security Testing Framework
 Tests REST APIs against OWASP API Security Top 10 (2023).
 
 Author: Vikash Vishnoi (@Vikash-Vishnoi)
-License: MIT
-Version: 1.0.0
 """
 
 import argparse
@@ -85,5 +83,61 @@ class Session:
     def delete(self, path, **kw): return self.request('DELETE', path, **kw)
     def patch(self, path, **kw): return self.request('PATCH', path, **kw)
     def options(self, path, **kw): return self.request('OPTIONS', path, **kw)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# API1:2023 — Broken Object Level Authorization (BOLA)
+# ═══════════════════════════════════════════════════════════════════════
+class TestBOLA:
+    """API1 — Tests for IDOR / broken object-level authorization."""
+
+    ID = "API1:2023"
+    NAME = "Broken Object Level Authorization (BOLA)"
+    SEVERITY = "CRITICAL"
+
+    @staticmethod
+    def run(session, endpoints):
+        results = {"test": TestBOLA.ID, "name": TestBOLA.NAME, "severity": TestBOLA.SEVERITY, "findings": []}
+        log(f"{TestBOLA.ID} — {TestBOLA.NAME}", "info")
+
+        id_patterns = [
+            (r'/(\d+)(?:/|$)', 'numeric'),
+            (r'/([a-f0-9]{24})(?:/|$)', 'mongodb_objectid'),
+            (r'/([a-f0-9\-]{36})(?:/|$)', 'uuid'),
+        ]
+
+        for ep in endpoints:
+            path = ep.get('path', '')
+            for pattern, id_type in id_patterns:
+                match = re.search(pattern, path)
+                if match:
+                    original_id = match.group(1)
+                    # Try incrementing numeric IDs
+                    if id_type == 'numeric':
+                        test_ids = [str(int(original_id) + i) for i in [1, -1, 100, 999]]
+                    elif id_type == 'uuid':
+                        test_ids = ['00000000-0000-0000-0000-000000000001']
+                    else:
+                        test_ids = ['000000000000000000000001']
+
+                    for test_id in test_ids:
+                        test_path = path[:match.start(1)] + test_id + path[match.end(1):]
+                        resp = session.get(test_path)
+                        if resp and resp.status_code == 200:
+                            results["findings"].append({
+                                "endpoint": test_path,
+                                "original_id": original_id,
+                                "test_id": test_id,
+                                "status": resp.status_code,
+                                "risk": "Object accessible with different ID — potential BOLA",
+                                "remediation": "Implement object-level authorization checks on every request"
+                            })
+                            log(f"BOLA: {test_path} returned 200 with different ID", "vuln")
+                        elif resp and resp.status_code == 403:
+                            log(f"BOLA: {test_path} properly returned 403", "pass")
+
+        if not results["findings"]:
+            log("No BOLA vulnerabilities detected in tested endpoints", "pass")
+        return results
 
 
