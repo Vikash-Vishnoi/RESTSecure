@@ -141,3 +141,75 @@ class TestBOLA:
         return results
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# API2:2023 — Broken Authentication
+# ═══════════════════════════════════════════════════════════════════════
+class TestBrokenAuth:
+    """API2 — Tests authentication mechanism weaknesses."""
+
+    ID = "API2:2023"
+    NAME = "Broken Authentication"
+    SEVERITY = "CRITICAL"
+
+    @staticmethod
+    def run(session, endpoints):
+        results = {"test": TestBrokenAuth.ID, "name": TestBrokenAuth.NAME, "severity": TestBrokenAuth.SEVERITY, "findings": []}
+        log(f"{TestBrokenAuth.ID} — {TestBrokenAuth.NAME}", "info")
+
+        auth_endpoints = ['/login', '/auth', '/token', '/oauth/token', '/api/login',
+                          '/api/auth', '/signin', '/api/signin', '/auth/login', '/v1/auth']
+
+        for ep in auth_endpoints:
+            # Test without auth
+            resp = session.get(ep)
+            if resp and resp.status_code not in [404, 405]:
+                log(f"Auth endpoint found: {ep} ({resp.status_code})", "data")
+
+            # Test weak credentials
+            weak_creds = [
+                {"username": "admin", "password": "admin"},
+                {"username": "admin", "password": "password"},
+                {"username": "admin", "password": "123456"},
+                {"username": "test", "password": "test"},
+                {"username": "api", "password": "api"},
+            ]
+
+            for cred in weak_creds:
+                resp = session.post(ep, json=cred)
+                if resp and resp.status_code == 200:
+                    try:
+                        body = resp.json()
+                        if any(k in body for k in ['token', 'access_token', 'jwt', 'session', 'key']):
+                            results["findings"].append({
+                                "endpoint": ep,
+                                "credentials": f"{cred['username']}:{cred['password']}",
+                                "risk": "Weak credentials accepted — token returned",
+                                "remediation": "Enforce strong password policies, implement rate limiting"
+                            })
+                            log(f"Weak creds accepted at {ep}: {cred['username']}:{cred['password']}", "vuln")
+                    except Exception:
+                        pass
+
+        # Check for missing auth on protected endpoints
+        for ep in endpoints:
+            path = ep.get('path', '')
+            if any(s in path.lower() for s in ['/admin', '/users', '/settings', '/config', '/private']):
+                headers_backup = dict(session.session.headers)
+                session.session.headers.pop('Authorization', None)
+                session.session.headers.pop('X-API-Key', None)
+                resp = session.get(path)
+                session.session.headers.update(headers_backup)
+                if resp and resp.status_code == 200:
+                    results["findings"].append({
+                        "endpoint": path,
+                        "risk": "Protected endpoint accessible without authentication",
+                        "remediation": "Require authentication for all sensitive endpoints"
+                    })
+                    log(f"No auth required: {path}", "vuln")
+
+        if not results["findings"]:
+            log("No broken authentication issues detected", "pass")
+        return results
+
+
+# ═══════════════════════════════════════════════════════════════════════
