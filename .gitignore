@@ -1,0 +1,7 @@
+﻿__pycache__/
+*.pyc
+restsecure_reports/
+.env*
+venv/
+stages_data/
+stage*.bat

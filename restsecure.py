@@ -1,0 +1,89 @@
+#!/usr/bin/env python3
+"""
+REST Secure — API Security Testing Framework
+Tests REST APIs against OWASP API Security Top 10 (2023).
+
+Author: Vikash Vishnoi (@Vikash-Vishnoi)
+License: MIT
+Version: 1.0.0
+"""
+
+import argparse
+import json
+import sys
+import os
+import re
+import time
+import hashlib
+import datetime
+import copy
+import concurrent.futures
+from pathlib import Path
+from urllib.parse import urlparse, urljoin, parse_qs
+
+try:
+    import requests
+    from requests.adapters import HTTPAdapter
+    from urllib3.util.retry import Retry
+except ImportError:
+    print("[ERROR] 'requests' library required: pip install requests")
+    sys.exit(1)
+
+VERSION = "1.0.0"
+BANNER = r"""
+  ____  _____ ____ _____   ____                          
+ |  _ \| ____/ ___|_   _| / ___|  ___  ___ _   _ _ __ ___ 
+ | |_) |  _| \___ \ | |   \___ \ / _ \/ __| | | | '__/ _ \
+ |  _ <| |___ ___) || |    ___) |  __/ (__| |_| | | |  __/
+ |_| \_\_____|____/ |_|   |____/ \___|\___|\__,_|_|  \___|
+
+  API Security Testing Framework  v{ver}
+  OWASP API Security Top 10 (2023)
+  github.com/Vikash-Vishnoi/RESTSecure
+""".format(ver=VERSION)
+
+# ─── Configuration ────────────────────────────────────────────────────
+OUTPUT_DIR = Path("./restsecure_reports")
+
+class C:
+    """Terminal colors."""
+    R="\033[91m";G="\033[92m";Y="\033[93m";B="\033[94m"
+    C="\033[96m";W="\033[97m";D="\033[90m";N="\033[0m";BOLD="\033[1m"
+
+def log(msg, level="info"):
+    tags = {"info":(C.C,"INFO"),"pass":(C.G,"PASS"),"fail":(C.R,"FAIL"),
+            "warn":(C.Y,"WARN"),"data":(C.W,"DATA"),"vuln":(C.R,"VULN")}
+    color, tag = tags.get(level, (C.W, "INFO"))
+    print(f"  {color}[{tag}]{C.N} {msg}")
+
+class Session:
+    """HTTP session with retry logic."""
+    def __init__(self, base_url, headers=None, timeout=10, verify=True):
+        self.base = base_url.rstrip('/')
+        self.timeout = timeout
+        self.verify = verify
+        self.session = requests.Session()
+        retry = Retry(total=2, backoff_factor=0.5, status_forcelist=[502,503,504])
+        self.session.mount('http://', HTTPAdapter(max_retries=retry))
+        self.session.mount('https://', HTTPAdapter(max_retries=retry))
+        if headers:
+            self.session.headers.update(headers)
+        self.session.headers.setdefault("User-Agent", "RESTSecure/1.0")
+
+    def request(self, method, path, **kwargs):
+        url = urljoin(self.base + '/', path.lstrip('/'))
+        kwargs.setdefault('timeout', self.timeout)
+        kwargs.setdefault('verify', self.verify)
+        try:
+            return self.session.request(method, url, **kwargs)
+        except Exception as e:
+            return None
+
+    def get(self, path, **kw): return self.request('GET', path, **kw)
+    def post(self, path, **kw): return self.request('POST', path, **kw)
+    def put(self, path, **kw): return self.request('PUT', path, **kw)
+    def delete(self, path, **kw): return self.request('DELETE', path, **kw)
+    def patch(self, path, **kw): return self.request('PATCH', path, **kw)
+    def options(self, path, **kw): return self.request('OPTIONS', path, **kw)
+
+
