@@ -4,6 +4,7 @@ REST Secure — API Security Testing Framework
 Tests REST APIs against OWASP API Security Top 10 (2023).
 
 Author: Vikash Vishnoi (@Vikash-Vishnoi)
+
 """
 
 import argparse
@@ -209,6 +210,155 @@ class TestBrokenAuth:
 
         if not results["findings"]:
             log("No broken authentication issues detected", "pass")
+        return results
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# API3:2023 — Broken Object Property Level Authorization
+# ═══════════════════════════════════════════════════════════════════════
+class TestBOPLA:
+    """API3 — Tests for mass assignment and excessive data exposure."""
+
+    ID = "API3:2023"
+    NAME = "Broken Object Property Level Authorization"
+    SEVERITY = "HIGH"
+
+    @staticmethod
+    def run(session, endpoints):
+        results = {"test": TestBOPLA.ID, "name": TestBOPLA.NAME, "severity": TestBOPLA.SEVERITY, "findings": []}
+        log(f"{TestBOPLA.ID} — {TestBOPLA.NAME}", "info")
+
+        sensitive_fields = ['password', 'secret', 'token', 'api_key', 'apikey', 'credit_card',
+                            'ssn', 'private_key', 'admin', 'role', 'is_admin', 'permissions',
+                            'salary', 'bank_account', 'internal_id', 'debug', 'hash', 'salt']
+
+        for ep in endpoints:
+            path = ep.get('path', '')
+            resp = session.get(path)
+            if resp and resp.status_code == 200:
+                try:
+                    body = resp.json()
+                    body_str = json.dumps(body).lower()
+                    exposed = [f for f in sensitive_fields if f in body_str]
+                    if exposed:
+                        results["findings"].append({
+                            "endpoint": path,
+                            "exposed_fields": exposed,
+                            "risk": "Sensitive data fields in API response",
+                            "remediation": "Filter response fields, implement view-level permissions"
+                        })
+                        log(f"Sensitive fields exposed at {path}: {', '.join(exposed)}", "vuln")
+                except Exception:
+                    pass
+
+            # Mass assignment test — try adding admin/role fields
+            if ep.get('method', '').upper() in ['POST', 'PUT', 'PATCH']:
+                test_payloads = [
+                    {"role": "admin", "is_admin": True},
+                    {"permissions": ["*"], "admin": True},
+                ]
+                for payload in test_payloads:
+                    resp = session.request(ep.get('method', 'POST'), path, json=payload)
+                    if resp and resp.status_code in [200, 201]:
+                        try:
+                            body = resp.json()
+                            if any(k in json.dumps(body).lower() for k in ['admin', 'role']):
+                                results["findings"].append({
+                                    "endpoint": path,
+                                    "payload": payload,
+                                    "risk": "Mass assignment — role/admin fields accepted",
+                                    "remediation": "Whitelist allowed input fields, reject unknown properties"
+                                })
+                                log(f"Mass assignment possible at {path}", "vuln")
+                        except Exception:
+                            pass
+
+        if not results["findings"]:
+            log("No property-level authorization issues detected", "pass")
+        return results
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# API4:2023 — Unrestricted Resource Consumption
+# ═══════════════════════════════════════════════════════════════════════
+class TestResourceConsumption:
+    """API4 — Tests rate limiting and resource exhaustion."""
+
+    ID = "API4:2023"
+    NAME = "Unrestricted Resource Consumption"
+    SEVERITY = "HIGH"
+
+    @staticmethod
+    def run(session, endpoints):
+        results = {"test": TestResourceConsumption.ID, "name": TestResourceConsumption.NAME,
+                    "severity": TestResourceConsumption.SEVERITY, "findings": []}
+        log(f"{TestResourceConsumption.ID} — {TestResourceConsumption.NAME}", "info")
+
+        test_endpoints = endpoints[:5] if endpoints else [{'path': '/'}]
+
+        for ep in test_endpoints:
+            path = ep.get('path', '/')
+
+            # Rate limiting test — send 20 rapid requests
+            responses = []
+            for i in range(20):
+                resp = session.get(path)
+                if resp:
+                    responses.append(resp.status_code)
+                time.sleep(0.05)
+
+            rate_limited = any(s in [429, 503] for s in responses)
+            rate_headers = False
+
+            # Check for rate limit headers
+            resp = session.get(path)
+            if resp:
+                rl_headers = ['X-RateLimit-Limit', 'X-RateLimit-Remaining', 'RateLimit-Limit',
+                               'RateLimit-Remaining', 'X-Rate-Limit', 'Retry-After']
+                found = [h for h in rl_headers if h.lower() in [k.lower() for k in resp.headers]]
+                rate_headers = bool(found)
+
+            if not rate_limited and not rate_headers:
+                results["findings"].append({
+                    "endpoint": path,
+                    "requests_sent": 20,
+                    "rate_limited": False,
+                    "rate_headers": False,
+                    "risk": "No rate limiting detected — susceptible to DoS/brute force",
+                    "remediation": "Implement rate limiting, add X-RateLimit headers, use API gateway"
+                })
+                log(f"No rate limiting on {path} (20 requests, no 429)", "vuln")
+            else:
+                log(f"Rate limiting present on {path}", "pass")
+
+            # Large payload test
+            large_payload = {"data": "A" * 100000}
+            resp = session.post(path, json=large_payload)
+            if resp and resp.status_code in [200, 201]:
+                results["findings"].append({
+                    "endpoint": path,
+                    "risk": "Large payload accepted (100KB) — no size limit",
+                    "remediation": "Set maximum request body size, validate input length"
+                })
+                log(f"Large payload accepted at {path}", "warn")
+
+            # Pagination abuse
+            resp = session.get(path, params={"limit": 999999, "page_size": 999999, "per_page": 999999})
+            if resp and resp.status_code == 200:
+                try:
+                    body = resp.json()
+                    if isinstance(body, list) and len(body) > 100:
+                        results["findings"].append({
+                            "endpoint": path,
+                            "risk": "Pagination bypass — excessive records returned",
+                            "remediation": "Enforce maximum page size server-side"
+                        })
+                        log(f"Pagination bypass at {path}: {len(body)} records", "vuln")
+                except Exception:
+                    pass
+
+        if not results["findings"]:
+            log("Rate limiting and resource controls appear adequate", "pass")
         return results
 
 
