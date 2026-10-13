@@ -185,5 +185,3 @@ MIT License — see [LICENSE](LICENSE).
   <sub><a href="https://github.com/Vikash-Vishnoi">@Vikash-Vishnoi</a> — Vikash Vishnoi</sub><br>
   <sub>OWASP API Security Top 10 (2023)</sub>
 </div>
-#   R E S T S e c u r e  
- 
