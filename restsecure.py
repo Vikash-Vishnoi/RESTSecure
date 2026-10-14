@@ -636,3 +636,143 @@ class TestMisconfig:
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# API9:2023 — Improper Inventory Management
+# ═══════════════════════════════════════════════════════════════════════
+class TestInventory:
+    """API9 — Tests for exposed old/debug/undocumented endpoints."""
+
+    ID = "API9:2023"
+    NAME = "Improper Inventory Management"
+    SEVERITY = "MEDIUM"
+
+    @staticmethod
+    def run(session, endpoints):
+        results = {"test": TestInventory.ID, "name": TestInventory.NAME,
+                    "severity": TestInventory.SEVERITY, "findings": []}
+        log(f"{TestInventory.ID} — {TestInventory.NAME}", "info")
+
+        discovery_paths = [
+            '/swagger.json', '/swagger.yaml', '/openapi.json', '/openapi.yaml',
+            '/api-docs', '/api/docs', '/docs', '/swagger-ui.html', '/swagger-ui/',
+            '/redoc', '/api/swagger', '/v1/swagger.json', '/v2/swagger.json',
+            '/.well-known/openapi.yaml', '/graphql', '/graphiql', '/playground',
+            '/api/v1', '/api/v2', '/api/v3', '/api/beta', '/api/staging',
+            '/api/test', '/api/dev', '/api/debug', '/api/internal',
+            '/healthz', '/readyz', '/livez', '/health', '/status', '/info',
+            '/metrics', '/prometheus', '/actuator', '/actuator/health',
+            '/actuator/env', '/actuator/beans', '/actuator/mappings',
+            '/debug/pprof', '/debug/vars', '/_debug', '/trace',
+            '/.git/config', '/.env', '/robots.txt', '/sitemap.xml',
+            '/wp-admin', '/admin', '/phpinfo.php', '/server-status',
+        ]
+
+        found = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            future_map = {executor.submit(session.get, p): p for p in discovery_paths}
+            for future in concurrent.futures.as_completed(future_map):
+                path = future_map[future]
+                try:
+                    resp = future.result()
+                    if resp and resp.status_code == 200:
+                        found.append(path)
+                        category = 'documentation' if any(s in path for s in ['swagger', 'openapi', 'docs', 'redoc', 'graphql']) else \
+                                   'debug' if any(s in path for s in ['debug', 'actuator', 'pprof', 'phpinfo']) else \
+                                   'versioning' if any(s in path for s in ['/v1', '/v2', '/v3', '/beta', '/staging', '/test', '/dev']) else \
+                                   'sensitive' if any(s in path for s in ['.git', '.env', 'admin', 'wp-admin']) else 'info'
+
+                        risk_level = 'high' if category in ['debug', 'sensitive'] else 'medium'
+                        results["findings"].append({
+                            "endpoint": path,
+                            "category": category,
+                            "risk_level": risk_level,
+                            "risk": f"Exposed {category} endpoint accessible",
+                            "remediation": "Restrict access to documentation/debug endpoints in production"
+                        })
+                        log(f"Exposed: {path} [{category}]", "vuln" if risk_level == 'high' else "warn")
+                except Exception:
+                    pass
+
+        if not results["findings"]:
+            log("No exposed inventory/debug endpoints detected", "pass")
+        else:
+            log(f"Found {len(found)} exposed endpoints", "data")
+        return results
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# API10:2023 — Unsafe Consumption of APIs
+# ═══════════════════════════════════════════════════════════════════════
+class TestUnsafeConsumption:
+    """API10 — Tests for injection via API inputs."""
+
+    ID = "API10:2023"
+    NAME = "Unsafe Consumption of APIs"
+    SEVERITY = "HIGH"
+
+    @staticmethod
+    def run(session, endpoints):
+        results = {"test": TestUnsafeConsumption.ID, "name": TestUnsafeConsumption.NAME,
+                    "severity": TestUnsafeConsumption.SEVERITY, "findings": []}
+        log(f"{TestUnsafeConsumption.ID} — {TestUnsafeConsumption.NAME}", "info")
+
+        injection_payloads = {
+            "sql": ["' OR '1'='1", "1; DROP TABLE users--", "' UNION SELECT NULL--", "1' AND '1'='1"],
+            "nosql": ['{"$gt":""}', '{"$ne":""}', '{"$regex":".*"}'],
+            "xss": ['<script>alert(1)</script>', '"><img src=x onerror=alert(1)>'],
+            "ssti": ['{{7*7}}', '${7*7}', '<%= 7*7 %>'],
+            "command": ['; ls', '| id', '`id`', '$(id)'],
+            "path": ['../../../etc/passwd', '..\\..\\..\\windows\\system32\\config\\sam'],
+        }
+
+        for ep in endpoints[:5]:
+            path = ep.get('path', '')
+
+            # Test via query parameters
+            for category, payloads in injection_payloads.items():
+                for payload in payloads[:2]:
+                    resp = session.get(path, params={"id": payload, "search": payload, "q": payload})
+                    if resp:
+                        body = resp.text.lower()
+                        indicators = {
+                            "sql": ['sql', 'syntax', 'mysql', 'postgresql', 'sqlite', 'oracle', 'mssql'],
+                            "xss": ['<script>', 'onerror='],
+                            "ssti": ['49'],  # 7*7
+                            "command": ['uid=', 'root:', '/bin/'],
+                            "path": ['root:', '[boot loader]', 'passwd'],
+                            "nosql": ['mongoerror', 'bson'],
+                        }
+                        for ind in indicators.get(category, []):
+                            if ind in body:
+                                results["findings"].append({
+                                    "endpoint": path,
+                                    "injection_type": category.upper(),
+                                    "payload": payload[:50],
+                                    "risk": f"Potential {category.upper()} injection — indicator found in response",
+                                    "remediation": f"Validate and sanitize all input, use parameterized queries"
+                                })
+                                log(f"{category.upper()} injection: {path} with {payload[:30]}", "vuln")
+                                break
+
+            # Test via JSON body
+            for category, payloads in injection_payloads.items():
+                resp = session.post(path, json={"input": payloads[0], "search": payloads[0]})
+                if resp and resp.status_code in [200, 201, 500]:
+                    body = resp.text.lower()
+                    for ind in ['error', 'exception', 'syntax', 'sql', 'stack']:
+                        if ind in body and resp.status_code == 500:
+                            results["findings"].append({
+                                "endpoint": path,
+                                "injection_type": category.upper(),
+                                "via": "JSON body",
+                                "risk": f"Server error triggered by {category} payload — possible injection",
+                                "remediation": "Input validation, WAF, parameterized queries"
+                            })
+                            log(f"{category.upper()} error at {path} via JSON body", "warn")
+                            break
+
+        if not results["findings"]:
+            log("No injection vulnerabilities detected", "pass")
+        return results
+
+
+# ═══════════════════════════════════════════════════════════════════════
