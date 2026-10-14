@@ -471,3 +471,168 @@ class TestSensitiveFlows:
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# API7:2023 — Server Side Request Forgery (SSRF)
+# ═══════════════════════════════════════════════════════════════════════
+class TestSSRF:
+    """API7 — Tests for SSRF vulnerabilities."""
+
+    ID = "API7:2023"
+    NAME = "Server Side Request Forgery (SSRF)"
+    SEVERITY = "HIGH"
+
+    @staticmethod
+    def run(session, endpoints):
+        results = {"test": TestSSRF.ID, "name": TestSSRF.NAME, "severity": TestSSRF.SEVERITY, "findings": []}
+        log(f"{TestSSRF.ID} — {TestSSRF.NAME}", "info")
+
+        ssrf_params = ['url', 'uri', 'link', 'href', 'src', 'source', 'redirect', 'redirect_url',
+                       'callback', 'webhook', 'proxy', 'target', 'dest', 'destination', 'fetch',
+                       'load', 'image', 'img', 'file', 'path', 'page', 'feed', 'host', 'site']
+
+        internal_targets = [
+            'http://127.0.0.1', 'http://localhost', 'http://0.0.0.0',
+            'http://169.254.169.254/latest/meta-data/',  # AWS IMDS
+            'http://metadata.google.internal/',           # GCP
+            'http://169.254.169.254/metadata/instance',   # Azure
+            'http://[::1]',
+        ]
+
+        for ep in endpoints:
+            path = ep.get('path', '')
+            for param in ssrf_params:
+                for target in internal_targets[:3]:
+                    resp = session.get(path, params={param: target})
+                    if resp and resp.status_code == 200:
+                        body = resp.text[:500]
+                        # Check for indicators of internal access
+                        indicators = ['ami-id', 'instance-id', 'local-ipv4', 'metadata',
+                                      'computeMetadata', 'root', 'localhost', '127.0.0.1']
+                        if any(ind in body.lower() for ind in indicators):
+                            results["findings"].append({
+                                "endpoint": path,
+                                "parameter": param,
+                                "payload": target,
+                                "risk": "Potential SSRF — internal resource accessible via URL parameter",
+                                "remediation": "Validate and whitelist URLs, block internal IP ranges, disable redirects"
+                            })
+                            log(f"SSRF: {path}?{param}={target} returned internal data", "vuln")
+
+        if not results["findings"]:
+            log("No SSRF vulnerabilities detected", "pass")
+        return results
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# API8:2023 — Security Misconfiguration
+# ═══════════════════════════════════════════════════════════════════════
+class TestMisconfig:
+    """API8 — Tests for security misconfiguration."""
+
+    ID = "API8:2023"
+    NAME = "Security Misconfiguration"
+    SEVERITY = "MEDIUM"
+
+    @staticmethod
+    def run(session, endpoints):
+        results = {"test": TestMisconfig.ID, "name": TestMisconfig.NAME,
+                    "severity": TestMisconfig.SEVERITY, "findings": []}
+        log(f"{TestMisconfig.ID} — {TestMisconfig.NAME}", "info")
+
+        base_resp = session.get('/')
+        if not base_resp:
+            log("Could not reach target", "fail")
+            return results
+
+        # CORS misconfiguration
+        resp = session.get('/', headers={'Origin': 'https://evil.com'})
+        if resp:
+            acao = resp.headers.get('Access-Control-Allow-Origin', '')
+            if acao == '*' or acao == 'https://evil.com':
+                results["findings"].append({
+                    "check": "CORS",
+                    "value": acao,
+                    "risk": "Overly permissive CORS — reflects arbitrary origin or uses wildcard",
+                    "remediation": "Whitelist specific trusted origins, avoid wildcard with credentials"
+                })
+                log(f"CORS misconfiguration: Access-Control-Allow-Origin: {acao}", "vuln")
+            else:
+                log("CORS properly configured", "pass")
+
+        # Security headers
+        security_headers = {
+            'Strict-Transport-Security': 'Missing HSTS header',
+            'X-Content-Type-Options': 'Missing X-Content-Type-Options',
+            'X-Frame-Options': 'Missing clickjacking protection',
+            'Content-Security-Policy': 'Missing CSP header',
+            'X-XSS-Protection': 'Missing XSS protection header',
+            'Cache-Control': 'Missing cache control for API responses',
+        }
+
+        for header, risk in security_headers.items():
+            if header.lower() not in [h.lower() for h in base_resp.headers]:
+                results["findings"].append({
+                    "check": "Security Header",
+                    "header": header,
+                    "risk": risk,
+                    "remediation": f"Add {header} header to all API responses"
+                })
+                log(f"Missing header: {header}", "warn")
+
+        # Server information disclosure
+        server = base_resp.headers.get('Server', '')
+        powered = base_resp.headers.get('X-Powered-By', '')
+        if server:
+            results["findings"].append({
+                "check": "Information Disclosure",
+                "header": "Server",
+                "value": server,
+                "risk": "Server version disclosed in headers",
+                "remediation": "Remove or obfuscate Server header"
+            })
+            log(f"Server disclosed: {server}", "warn")
+        if powered:
+            results["findings"].append({
+                "check": "Information Disclosure",
+                "header": "X-Powered-By",
+                "value": powered,
+                "risk": "Technology stack disclosed via X-Powered-By",
+                "remediation": "Remove X-Powered-By header"
+            })
+            log(f"X-Powered-By disclosed: {powered}", "warn")
+
+        # Verbose errors
+        error_paths = ['/api/undefined', '/api/../../etc/passwd', '/api/' + 'A' * 5000]
+        for ep in error_paths:
+            resp = session.get(ep)
+            if resp and resp.status_code >= 400:
+                body = resp.text.lower()
+                if any(ind in body for ind in ['stack trace', 'traceback', 'exception',
+                                                 'at line', 'sql', 'syntax error', 'debug']):
+                    results["findings"].append({
+                        "check": "Verbose Errors",
+                        "endpoint": ep[:80],
+                        "risk": "Detailed error messages expose internal information",
+                        "remediation": "Return generic error messages, log details server-side"
+                    })
+                    log(f"Verbose error response at {ep[:60]}", "vuln")
+
+        # HTTP methods
+        resp = session.options('/')
+        if resp and 'Allow' in resp.headers:
+            allowed = resp.headers['Allow']
+            dangerous = [m for m in ['TRACE', 'TRACK', 'DEBUG'] if m in allowed.upper()]
+            if dangerous:
+                results["findings"].append({
+                    "check": "Dangerous Methods",
+                    "methods": dangerous,
+                    "risk": f"Dangerous HTTP methods enabled: {', '.join(dangerous)}",
+                    "remediation": "Disable TRACE, TRACK, and DEBUG methods"
+                })
+                log(f"Dangerous methods: {', '.join(dangerous)}", "vuln")
+
+        if not results["findings"]:
+            log("No security misconfigurations detected", "pass")
+        return results
+
+
+# ═══════════════════════════════════════════════════════════════════════
