@@ -363,3 +363,111 @@ class TestResourceConsumption:
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# API5:2023 — Broken Function Level Authorization
+# ═══════════════════════════════════════════════════════════════════════
+class TestBFLA:
+    """API5 — Tests for horizontal/vertical privilege escalation."""
+
+    ID = "API5:2023"
+    NAME = "Broken Function Level Authorization"
+    SEVERITY = "CRITICAL"
+
+    @staticmethod
+    def run(session, endpoints):
+        results = {"test": TestBFLA.ID, "name": TestBFLA.NAME, "severity": TestBFLA.SEVERITY, "findings": []}
+        log(f"{TestBFLA.ID} — {TestBFLA.NAME}", "info")
+
+        admin_paths = ['/admin', '/api/admin', '/api/v1/admin', '/admin/users', '/admin/config',
+                       '/api/admin/settings', '/management', '/internal', '/debug', '/actuator',
+                       '/actuator/health', '/actuator/env', '/swagger-ui.html', '/api-docs',
+                       '/graphql', '/.env', '/config', '/api/config', '/metrics', '/health',
+                       '/status', '/info', '/api/internal', '/v1/admin', '/v2/admin']
+
+        for path in admin_paths:
+            for method in ['GET', 'POST', 'PUT', 'DELETE']:
+                resp = session.request(method, path)
+                if resp and resp.status_code == 200:
+                    results["findings"].append({
+                        "endpoint": path,
+                        "method": method,
+                        "status": 200,
+                        "risk": f"Administrative endpoint accessible via {method}",
+                        "remediation": "Restrict admin functions to authorized roles only"
+                    })
+                    log(f"Admin endpoint accessible: {method} {path}", "vuln")
+                    break
+                elif resp and resp.status_code == 403:
+                    log(f"Properly restricted: {method} {path}", "pass")
+                    break
+
+        # HTTP method tampering
+        for ep in endpoints[:5]:
+            path = ep.get('path', '')
+            original_method = ep.get('method', 'GET')
+            test_methods = ['DELETE', 'PUT', 'PATCH'] if original_method == 'GET' else ['GET']
+            for method in test_methods:
+                resp = session.request(method, path)
+                if resp and resp.status_code in [200, 201, 204]:
+                    results["findings"].append({
+                        "endpoint": path,
+                        "original_method": original_method,
+                        "test_method": method,
+                        "risk": f"Unexpected {method} method allowed on {original_method} endpoint",
+                        "remediation": "Restrict HTTP methods per endpoint"
+                    })
+                    log(f"Method tampering: {method} {path} returned {resp.status_code}", "warn")
+
+        if not results["findings"]:
+            log("No function-level authorization issues detected", "pass")
+        return results
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# API6:2023 — Unrestricted Access to Sensitive Business Flows
+# ═══════════════════════════════════════════════════════════════════════
+class TestSensitiveFlows:
+    """API6 — Tests for abuse of business logic flows."""
+
+    ID = "API6:2023"
+    NAME = "Unrestricted Access to Sensitive Business Flows"
+    SEVERITY = "MEDIUM"
+
+    @staticmethod
+    def run(session, endpoints):
+        results = {"test": TestSensitiveFlows.ID, "name": TestSensitiveFlows.NAME,
+                    "severity": TestSensitiveFlows.SEVERITY, "findings": []}
+        log(f"{TestSensitiveFlows.ID} — {TestSensitiveFlows.NAME}", "info")
+
+        sensitive_patterns = ['purchase', 'checkout', 'transfer', 'payment', 'order',
+                              'register', 'signup', 'reset', 'forgot', 'verify', 'otp',
+                              'coupon', 'discount', 'redeem', 'vote', 'comment', 'review']
+
+        for ep in endpoints:
+            path = ep.get('path', '').lower()
+            if any(p in path for p in sensitive_patterns):
+                # Check if CAPTCHA or anti-automation is required
+                resp = session.get(path)
+                if resp:
+                    body_str = resp.text.lower()
+                    has_captcha = any(c in body_str for c in ['captcha', 'recaptcha', 'hcaptcha', 'turnstile'])
+                    has_csrf = any(h.lower() in [k.lower() for k in resp.headers]
+                                  for h in ['X-CSRF-Token', 'X-XSRF-Token'])
+
+                    if not has_captcha and not has_csrf:
+                        matched = [p for p in sensitive_patterns if p in path]
+                        results["findings"].append({
+                            "endpoint": path,
+                            "matched_patterns": matched,
+                            "captcha": has_captcha,
+                            "csrf": has_csrf,
+                            "risk": "Sensitive flow without anti-automation controls",
+                            "remediation": "Add CAPTCHA, rate limiting, or step-up auth for sensitive operations"
+                        })
+                        log(f"Sensitive flow unprotected: {path} (no CAPTCHA/CSRF)", "warn")
+
+        if not results["findings"]:
+            log("No unprotected sensitive business flows detected", "pass")
+        return results
+
+
+# ═══════════════════════════════════════════════════════════════════════
