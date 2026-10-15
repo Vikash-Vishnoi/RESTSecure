@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>REST Secure — API Security Testing Framework</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='2' fill='%23E03131'/><text x='8' y='12.5' text-anchor='middle' font-size='10' fill='white' font-weight='bold'>A</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+--bg:#FAFAF9;--bg2:#F2F1EE;--surface:#FFFFFF;--ink:#1A1A19;--ink2:#4A4A48;--ink3:#8A8A87;--ink4:#BEBEB9;
+--red:#E03131;--red2:#C92A2A;--red-pale:#FFF0F0;--amber:#E67700;--amber-pale:#FFF8E1;--green:#2B8A3E;--green-pale:#EBFBEE;
+--border:#E0DFDB;--border2:#D0CFC9;
+--serif:'Instrument Serif',Georgia,serif;--mono:'DM Mono',monospace;--sans:'DM Sans',system-ui,sans-serif;
+}
+html{font-size:16px;scroll-behavior:smooth}
+body{font-family:var(--sans);background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
+
+/* Grain texture */
+body::after{content:'';position:fixed;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");pointer-events:none;z-index:9999;opacity:0.5}
+
+.wrap{max-width:1000px;margin:0 auto;padding:0 28px}
+
+/* ═══ HEADER BAR ═══ */
+.topbar{border-bottom:2px solid var(--ink);padding:14px 0;display:flex;align-items:center;justify-content:space-between}
+.topbar-brand{font-family:var(--mono);font-size:0.82rem;font-weight:500;color:var(--ink);letter-spacing:2px;text-transform:uppercase}
+.topbar-links{display:flex;gap:20px}
+.topbar-links a{font-family:var(--mono);font-size:0.72rem;color:var(--ink3);text-decoration:none;text-transform:uppercase;letter-spacing:1px;transition:color .12s}
+.topbar-links a:hover{color:var(--red)}
+
+/* ═══ HERO ═══ */
+.hero{padding:80px 0 60px;border-bottom:1px solid var(--border)}
+.hero-eyebrow{font-family:var(--mono);font-size:0.7rem;color:var(--red);text-transform:uppercase;letter-spacing:3px;margin-bottom:16px}
+.hero h1{font-family:var(--serif);font-size:4.5rem;font-weight:400;line-height:1.05;margin-bottom:16px;letter-spacing:-2px}
+.hero h1 em{font-style:italic;color:var(--red)}
+@media(max-width:600px){.hero h1{font-size:2.8rem}}
+.hero-desc{font-size:1.05rem;color:var(--ink2);max-width:520px;line-height:1.75;margin-bottom:32px}
+.hero-actions{display:flex;gap:12px;flex-wrap:wrap}
+.btn-dark{padding:12px 28px;background:var(--ink);color:#fff;border:none;border-radius:4px;font-family:var(--mono);font-size:0.78rem;text-transform:uppercase;letter-spacing:1px;cursor:pointer;text-decoration:none;transition:background .12s}
+.btn-dark:hover{background:var(--red)}
+.btn-ghost{padding:12px 28px;background:transparent;color:var(--ink);border:1.5px solid var(--ink);border-radius:4px;font-family:var(--mono);font-size:0.78rem;text-transform:uppercase;letter-spacing:1px;cursor:pointer;text-decoration:none;transition:all .12s}
+.btn-ghost:hover{border-color:var(--red);color:var(--red)}
+
+/* ═══ STATS STRIP ═══ */
+.stats-strip{display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--border)}
+@media(max-width:600px){.stats-strip{grid-template-columns:repeat(2,1fr)}}
+.stat-box{padding:32px 0;text-align:center;border-left:1px solid var(--border)}
+.stat-box:first-child{border-left:none}
+.stat-num{font-family:var(--serif);font-size:3.2rem;font-weight:400;color:var(--ink);line-height:1}
+.stat-num.red{color:var(--red)}
+.stat-label{font-family:var(--mono);font-size:0.62rem;color:var(--ink3);text-transform:uppercase;letter-spacing:2px;margin-top:6px}
+
+/* ═══ SECTION ═══ */
+.section{padding:64px 0;border-bottom:1px solid var(--border)}
+.section:last-of-type{border-bottom:none}
+.sec-eyebrow{font-family:var(--mono);font-size:0.62rem;color:var(--red);text-transform:uppercase;letter-spacing:3px;margin-bottom:10px}
+.sec-title{font-family:var(--serif);font-size:2.2rem;font-weight:400;letter-spacing:-0.5px;margin-bottom:8px}
+.sec-desc{font-size:0.92rem;color:var(--ink2);line-height:1.7;max-width:560px;margin-bottom:32px}
+
+/* ═══ OWASP MODULES ═══ */
+.modules{display:flex;flex-direction:column;gap:0}
+.mod-row{display:grid;grid-template-columns:80px 1fr;gap:0;border-top:1px solid var(--border);transition:background .1s}
+.mod-row:hover{background:var(--bg2)}
+.mod-id{padding:20px 0;font-family:var(--mono);font-size:0.72rem;font-weight:500;color:var(--ink3);border-left:3px solid transparent;padding-left:16px}
+.mod-row:hover .mod-id{border-left-color:var(--red);color:var(--red)}
+.mod-body{padding:20px 0 20px 0;display:grid;grid-template-columns:1fr auto;gap:12px;align-items:start}
+.mod-name{font-family:var(--sans);font-size:0.92rem;font-weight:600;margin-bottom:3px}
+.mod-desc{font-size:0.78rem;color:var(--ink2);line-height:1.6}
+.mod-tech{font-family:var(--mono);font-size:0.62rem;color:var(--ink3);margin-top:6px}
+.sev{font-family:var(--mono);font-size:0.58rem;font-weight:500;text-transform:uppercase;letter-spacing:1.5px;padding:4px 10px;border-radius:2px;white-space:nowrap}
+.sev-c{background:var(--red-pale);color:var(--red);border:1px solid #f5c6c6}
+.sev-h{background:var(--amber-pale);color:var(--amber);border:1px solid #f5dfa6}
+.sev-m{background:var(--green-pale);color:var(--green);border:1px solid #b2dfb5}
+
+/* ═══ TERMINAL ═══ */
+.terminal{background:var(--ink);border-radius:8px;overflow:hidden;margin:0 auto;box-shadow:0 20px 60px rgba(0,0,0,0.12)}
+.term-bar{padding:10px 16px;display:flex;align-items:center;gap:6px;background:#252524}
+.term-dot{width:10px;height:10px;border-radius:50%}
+.term-body{padding:20px;font-family:var(--mono);font-size:0.68rem;line-height:1.9;color:#A0A09C;overflow-x:auto;white-space:pre}
+.t-w{color:#E8E8E4;font-weight:500}.t-r{color:#FF6B6B}.t-g{color:#51CF66}.t-y{color:#FFD43B}.t-c{color:#66D9EF}
+
+/* ═══ CODE BLOCK ═══ */
+.codeblock{background:var(--ink);border-radius:8px;padding:24px;font-family:var(--mono);font-size:0.75rem;color:#A0A09C;line-height:1.9;overflow-x:auto}
+.codeblock .cm{color:#666}.codeblock .kw{color:#66D9EF}
+
+/* ═══ PARAMS TABLE ═══ */
+.params{width:100%;font-size:0.82rem;border-collapse:collapse}
+.params th{text-align:left;padding:10px 0;font-family:var(--mono);font-size:0.62rem;color:var(--ink3);text-transform:uppercase;letter-spacing:2px;border-bottom:2px solid var(--ink)}
+.params td{padding:12px 0;border-bottom:1px solid var(--border);color:var(--ink2)}
+.params td:first-child{font-family:var(--mono);font-weight:500;color:var(--ink)}
+.params tr:last-child td{border-bottom:none}
+
+/* ═══ TWO-COL ═══ */
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+@media(max-width:700px){.two-col{grid-template-columns:1fr}}
+.report-card{padding:32px;border:1.5px solid var(--border);border-radius:6px;transition:border-color .12s}
+.report-card:hover{border-color:var(--red)}
+.report-card h3{font-family:var(--mono);font-size:1.4rem;font-weight:500;margin-bottom:8px}
+.report-card p{font-size:0.82rem;color:var(--ink2);line-height:1.65}
+
+/* ═══ ARCHITECTURE ═══ */
+.arch-tree{font-family:var(--mono);font-size:0.72rem;line-height:1.8;color:var(--ink2);padding:28px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;overflow-x:auto;white-space:pre}
+.arch-tree .h{color:var(--ink);font-weight:500}.arch-tree .r{color:var(--red)}
+
+/* ═══ FOOTER ═══ */
+.footer{padding:48px 0;text-align:center;border-top:2px solid var(--ink);margin-top:64px}
+.footer-brand{font-family:var(--serif);font-size:1.8rem;font-style:italic;color:var(--ink);margin-bottom:8px}
+.footer-sub{font-family:var(--mono);font-size:0.65rem;color:var(--ink3);text-transform:uppercase;letter-spacing:2px}
+.footer-links{margin-top:16px;display:flex;gap:20px;justify-content:center}
+.footer-links a{font-family:var(--mono);font-size:0.68rem;color:var(--ink3);text-decoration:none;text-transform:uppercase;letter-spacing:1px}
+.footer-links a:hover{color:var(--red)}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+<!-- TOPBAR -->
+<div class="topbar">
+    <div class="topbar-brand">REST Secure</div>
+    <div class="topbar-links">
+        <a href="https://owasp.org/API-Security/editions/2023/en/0x00-header/">OWASP Ref</a>
+    </div>
+</div>
+
+<!-- HERO -->
+<div class="hero">
+    <div class="hero-eyebrow">OWASP API Security Top 10 — 2023</div>
+    <h1>API Security<br>Testing <em>Framework</em></h1>
+    <div class="hero-desc">10 automated test modules that scan REST APIs for authentication flaws, injection vulnerabilities, SSRF, misconfigurations, and authorization bypasses. On-premises deployable.</div>
+    <div class="hero-actions">
+        <a class="btn-dark" href="https://github.com/Vikash-Vishnoi/RESTSecure">View Repository</a>
+    </div>
+</div>
+
+<!-- STATS -->
+<div class="stats-strip">
+    <div class="stat-box"><div class="stat-num red">10</div><div class="stat-label">OWASP Modules</div></div>
+    <div class="stat-box"><div class="stat-num">50+</div><div class="stat-label">Endpoint Discovery</div></div>
+    <div class="stat-box"><div class="stat-num">6</div><div class="stat-label">Injection Types</div></div>
+    <div class="stat-box"><div class="stat-num">2</div><div class="stat-label">Report Formats</div></div>
+</div>
+
+<!-- TERMINAL -->
+<div class="section">
+    <div class="sec-eyebrow">Live Output</div>
+    <div class="sec-title">Scan in action</div>
+    <div class="sec-desc">Authenticated scan against a target API. Color-coded findings with severity classification and per-check remediation.</div>
+    <div class="terminal">
+        <div class="term-bar">
+            <div class="term-dot" style="background:#FF5F57"></div>
+            <div class="term-dot" style="background:#FEBC2E"></div>
+            <div class="term-dot" style="background:#28C840"></div>
+        </div>
+        <div class="term-body"><span class="t-c">$</span> <span class="t-w">python3 restsecure.py -u https://api.target.com -H "Authorization: Bearer eyJ..."</span>
+
+  <span class="t-g">[PASS]</span> Target: https://api.target.com — Status: 200
+
+<span class="t-w">═══════════════════════════════════════════════════════════</span>
+  <span class="t-c">[INFO]</span> API1:2023 — Broken Object Level Authorization (BOLA)
+  <span class="t-r">[VULN]</span> /api/users/124 returned 200 with manipulated ID
+  <span class="t-g">[PASS]</span> /api/orders/999 properly returned 403
+
+<span class="t-w">═══════════════════════════════════════════════════════════</span>
+  <span class="t-c">[INFO]</span> API4:2023 — Unrestricted Resource Consumption
+  <span class="t-r">[VULN]</span> No rate limiting detected on /api/users (20 requests)
+  <span class="t-y">[WARN]</span> Large payload (100KB) accepted at /api/users
+
+<span class="t-w">═══════════════════════════════════════════════════════════</span>
+  <span class="t-c">[INFO]</span> API8:2023 — Security Misconfiguration
+  <span class="t-r">[VULN]</span> CORS misconfiguration: Access-Control-Allow-Origin: *
+  <span class="t-y">[WARN]</span> Missing: Strict-Transport-Security
+  <span class="t-y">[WARN]</span> Server header discloses: nginx/1.24.0
+
+<span class="t-w">═══════════════════════════════════════════════════════════</span>
+  <span class="t-c">[INFO]</span> API9:2023 — Improper Inventory Management
+  <span class="t-r">[VULN]</span> Exposed: /swagger.json [documentation]
+  <span class="t-r">[VULN]</span> Exposed: /actuator/health [debug]
+
+<span class="t-w">═══════════════════════════════════════════════════════════</span>
+  REST Secure Scan Complete
+  Target:          https://api.target.com
+  Tests:           10
+  Vulnerabilities: <span class="t-r">11</span>
+  Score:           <span class="t-r">45%</span>
+  Reports:         ./restsecure_reports/
+<span class="t-w">═══════════════════════════════════════════════════════════</span></div>
+    </div>
+</div>
+
+<!-- MODULES -->
+<div class="section">
+    <div class="sec-eyebrow">Test Coverage</div>
+    <div class="sec-title">10 OWASP modules</div>
+    <div class="sec-desc">Each module targets a specific OWASP API Security Top 10 (2023) category. Every finding includes severity, risk description, and remediation guidance.</div>
+    <div class="modules">
+        <div class="mod-row"><div class="mod-id">API1</div><div class="mod-body"><div><div class="mod-name">Broken Object Level Authorization</div><div class="mod-desc">Manipulates object identifiers — numeric increment, UUID substitution, MongoDB ObjectID — to detect IDOR vulnerabilities where resources belonging to other users are accessible.</div><div class="mod-tech">Techniques: ID manipulation, response diffing, 403 vs 200 analysis</div></div><span class="sev sev-c">Critical</span></div></div>
+        <div class="mod-row"><div class="mod-id">API2</div><div class="mod-body"><div><div class="mod-name">Broken Authentication</div><div class="mod-desc">Probes login endpoints with common credential pairs, detects missing authentication on sensitive paths, and identifies token leakage in API responses.</div><div class="mod-tech">Techniques: 5 credential pairs, auth bypass, token detection in response body</div></div><span class="sev sev-c">Critical</span></div></div>
+        <div class="mod-row"><div class="mod-id">API3</div><div class="mod-body"><div><div class="mod-name">Broken Object Property Level Authorization</div><div class="mod-desc">Scans responses for 16 sensitive field patterns (password, token, ssn, api_key, role). Tests writable endpoints for mass assignment by injecting privilege-escalation properties.</div><div class="mod-tech">Techniques: 16 field signatures, role/admin injection, mass assignment</div></div><span class="sev sev-h">High</span></div></div>
+        <div class="mod-row"><div class="mod-id">API4</div><div class="mod-body"><div><div class="mod-name">Unrestricted Resource Consumption</div><div class="mod-desc">Sends 20 rapid requests to detect missing rate limiting. Checks for rate limit headers, tests 100KB payload acceptance, and probes pagination bypass with limit=999999.</div><div class="mod-tech">Techniques: Burst testing, header analysis, payload size, pagination abuse</div></div><span class="sev sev-h">High</span></div></div>
+        <div class="mod-row"><div class="mod-id">API5</div><div class="mod-body"><div><div class="mod-name">Broken Function Level Authorization</div><div class="mod-desc">Discovers accessible admin and debug endpoints across 25 common paths. Tests HTTP method tampering — sending DELETE and PUT to GET-only endpoints to detect missing method restrictions.</div><div class="mod-tech">Techniques: 25 admin paths, method tampering (GET/PUT/DELETE/PATCH)</div></div><span class="sev sev-c">Critical</span></div></div>
+        <div class="mod-row"><div class="mod-id">API6</div><div class="mod-body"><div><div class="mod-name">Unrestricted Access to Sensitive Flows</div><div class="mod-desc">Identifies business-critical operations (purchase, transfer, registration, OTP, password reset) and checks for CAPTCHA, CSRF tokens, or step-up authentication controls.</div><div class="mod-tech">Techniques: 16 sensitive flow patterns, CAPTCHA/CSRF detection</div></div><span class="sev sev-m">Medium</span></div></div>
+        <div class="mod-row"><div class="mod-id">API7</div><div class="mod-body"><div><div class="mod-name">Server Side Request Forgery</div><div class="mod-desc">Injects internal targets (localhost, AWS IMDS 169.254.169.254, GCP and Azure metadata) through 16 URL parameter names. Detects cloud metadata indicators in responses.</div><div class="mod-tech">Techniques: 16 URL params × 3 cloud targets, IMDS indicator detection</div></div><span class="sev sev-h">High</span></div></div>
+        <div class="mod-row"><div class="mod-id">API8</div><div class="mod-body"><div><div class="mod-name">Security Misconfiguration</div><div class="mod-desc">Audits CORS policy (wildcard, origin reflection), 6 security headers, server version disclosure, verbose error responses with stack traces, and dangerous HTTP methods (TRACE/TRACK).</div><div class="mod-tech">Techniques: CORS origin test, 6 headers, error probing, method audit</div></div><span class="sev sev-m">Medium</span></div></div>
+        <div class="mod-row"><div class="mod-id">API9</div><div class="mod-body"><div><div class="mod-name">Improper Inventory Management</div><div class="mod-desc">Concurrently scans 50+ paths for exposed Swagger/OpenAPI docs, GraphQL endpoints, Spring Boot Actuator, .git/.env files, and legacy API versions (/v1, /v2, /beta, /staging).</div><div class="mod-tech">Techniques: 50+ path brute, concurrent scanning, endpoint classification</div></div><span class="sev sev-m">Medium</span></div></div>
+        <div class="mod-row"><div class="mod-id">API10</div><div class="mod-body"><div><div class="mod-name">Unsafe Consumption of APIs</div><div class="mod-desc">Sends injection payloads through query parameters and JSON body — SQL (4 payloads), NoSQL (3), XSS (2), SSTI (3), command injection (4), and path traversal (2). Matches response indicators per category.</div><div class="mod-tech">Techniques: 18 payloads across 6 injection categories, dual vector (params + body)</div></div><span class="sev sev-h">High</span></div></div>
+    </div>
+</div>
+
+<!-- DEPLOYMENT -->
+<div class="section">
+    <div class="sec-eyebrow">Deployment</div>
+    <div class="sec-title">Quick start</div>
+    <div class="sec-desc">Python 3.8+ with the requests library. No API keys, cloud services, or external accounts required.</div>
+    <div class="codeblock"><span class="cm"># Install</span>
+<span class="kw">git clone https://github.com/Vikash-Vishnoi/RESTSecure.git</span>
+<span class="kw">cd RESTSecure && pip install requests</span>
+
+<span class="cm"># Full OWASP scan</span>
+<span class="kw">python3 restsecure.py -u https://api.example.com</span>
+
+<span class="cm"># Authenticated scan</span>
+<span class="kw">python3 restsecure.py -u https://api.example.com -H "Authorization: Bearer TOKEN"</span>
+
+<span class="cm"># Target specific endpoints</span>
+<span class="kw">python3 restsecure.py -u https://api.example.com -e /users,/orders,/admin</span>
+
+<span class="cm"># Run only specific OWASP categories</span>
+<span class="kw">python3 restsecure.py -u https://api.example.com --tests API1,API4,API8</span>
+
+<span class="cm"># Internal API (skip TLS verification)</span>
+<span class="kw">python3 restsecure.py -u https://staging.internal:8443 --no-verify</span></div>
+</div>
+
+<!-- PARAMETERS -->
+<div class="section">
+    <div class="sec-eyebrow">Reference</div>
+    <div class="sec-title">Parameters</div>
+    <table class="params">
+        <thead><tr><th>Flag</th><th>Description</th></tr></thead>
+        <tbody>
+            <tr><td>-u, --url</td><td>Base URL of the target API (required)</td></tr>
+            <tr><td>-e, --endpoints</td><td>Comma-separated paths to test (e.g., /users,/orders)</td></tr>
+            <tr><td>-H, --header</td><td>Custom HTTP header — repeatable (e.g., "Authorization: Bearer token")</td></tr>
+            <tr><td>--tests</td><td>Specific OWASP categories to run (e.g., API1,API4,API8)</td></tr>
+            <tr><td>--timeout</td><td>Request timeout in seconds (default: 10)</td></tr>
+            <tr><td>--no-verify</td><td>Skip TLS certificate verification</td></tr>
+            <tr><td>--version</td><td>Display version and exit</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- REPORTING -->
+<div class="section">
+    <div class="sec-eyebrow">Output</div>
+    <div class="sec-title">Reporting</div>
+    <div class="sec-desc">Every scan generates two report formats automatically. Each finding includes severity, risk description, and actionable remediation.</div>
+    <div class="two-col">
+        <div class="report-card">
+            <h3>JSON</h3>
+            <p>Structured data with full metadata, per-test findings, severity levels, and remediation steps. Designed for CI/CD pipeline integration, SIEM ingestion, and GRC platform import.</p>
+        </div>
+        <div class="report-card">
+            <h3>HTML</h3>
+            <p>Visual report with color-coded severity, compliance score, and finding details. Suitable for management review, audit evidence, and stakeholder communication.</p>
+        </div>
+    </div>
+</div>
+
+<!-- ARCHITECTURE -->
+<div class="section">
+    <div class="sec-eyebrow">Internals</div>
+    <div class="sec-title">Architecture</div>
+    <div class="arch-tree"><span class="h">restsecure.py</span>
+<span class="r">├──</span> <span class="h">Session</span>              HTTP client — retry logic, auth propagation, timeout
+<span class="r">├──</span> <span class="h">TestBOLA</span>             API1  Broken Object Level Authorization
+<span class="r">├──</span> <span class="h">TestBrokenAuth</span>       API2  Broken Authentication
+<span class="r">├──</span> <span class="h">TestBOPLA</span>            API3  Object Property Level Authorization
+<span class="r">├──</span> <span class="h">TestResourceConsump</span>  API4  Unrestricted Resource Consumption
+<span class="r">├──</span> <span class="h">TestBFLA</span>             API5  Broken Function Level Authorization
+<span class="r">├──</span> <span class="h">TestSensitiveFlows</span>   API6  Sensitive Business Flows
+<span class="r">├──</span> <span class="h">TestSSRF</span>             API7  Server Side Request Forgery
+<span class="r">├──</span> <span class="h">TestMisconfig</span>        API8  Security Misconfiguration
+<span class="r">├──</span> <span class="h">TestInventory</span>        API9  Improper Inventory Management
+<span class="r">├──</span> <span class="h">TestUnsafeConsump</span>    API10 Unsafe Consumption of APIs
+<span class="r">└──</span> <span class="h">Reporter</span>             JSON + HTML generation with scoring</div>
+</div>
+
+</div>
+
+<!-- FOOTER -->
+<div class="footer">
+    <div class="wrap">
+        <div class="footer-brand">REST Secure</div>
+        <div class="footer-sub">API Security Testing Framework — OWASP API Top 10 (2023)</div>
+        <div class="footer-links">
+            <a href="https://github.com/Vikash-Vishnoi/RESTSecure">GitHub</a>
+            <a href="https://github.com/Vikash-Vishnoi">@Vikash-Vishnoi</a> — Vikash Vishnoi
+            <a href="https://github.com/Vikash-Vishnoi/RESTSecure/blob/main/LICENSE">MIT License</a>
+        </div>
+    </div>
+</div>
+</body>
+</html>
