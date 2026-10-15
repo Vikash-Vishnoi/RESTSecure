@@ -829,3 +829,131 @@ h1{{color:#00d4ff}}.stat{{display:inline-block;padding:8px 16px;margin:4px;borde
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# MAIN
+# ═══════════════════════════════════════════════════════════════════════
+def main():
+    parser = argparse.ArgumentParser(
+        description="REST Secure — API Security Testing Framework (OWASP API Top 10 2023)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Tests:
+  API1   Broken Object Level Authorization (BOLA/IDOR)
+  API2   Broken Authentication
+  API3   Broken Object Property Level Authorization
+  API4   Unrestricted Resource Consumption (Rate Limiting)
+  API5   Broken Function Level Authorization (Privilege Escalation)
+  API6   Unrestricted Access to Sensitive Business Flows
+  API7   Server Side Request Forgery (SSRF)
+  API8   Security Misconfiguration (CORS, Headers, Errors)
+  API9   Improper Inventory Management (Exposed Endpoints)
+  API10  Unsafe Consumption of APIs (Injection)
+
+Examples:
+  restsecure.py -u https://api.example.com
+  restsecure.py -u https://api.example.com -e /users,/orders
+  restsecure.py -u https://api.example.com -H "Authorization: Bearer TOKEN"
+  restsecure.py -u https://api.example.com --tests API1,API4,API8
+  restsecure.py -u https://api.example.com --spec openapi.json
+  restsecure.py -u https://api.example.com --spec https://api.example.com/openapi.json
+        """
+    )
+    parser.add_argument("-u", "--url", required=True, help="Base URL of the API")
+    parser.add_argument("-e", "--endpoints", help="Comma-separated endpoint paths to test")
+    parser.add_argument("-H", "--header", action="append", help="Custom header (e.g., 'Authorization: Bearer token')")
+    parser.add_argument("--spec", metavar="SPEC",
+                        help="OpenAPI 3.x / Swagger 2.0 spec (local file path or URL). "
+                             "Endpoints are extracted from the spec's 'paths' section and merged with -e.")
+    parser.add_argument("--tests", help="Specific tests to run (e.g., API1,API4,API8)")
+    parser.add_argument("--timeout", type=int, default=10, help="Request timeout (default: 10s)")
+    parser.add_argument("--no-verify", action="store_true", help="Skip TLS verification")
+    parser.add_argument("--version", action="version", version=f"REST Secure v{VERSION}")
+
+    args = parser.parse_args()
+    print(BANNER)
+
+    # Parse headers
+    headers = {}
+    if args.header:
+        for h in args.header:
+            key, _, val = h.partition(':')
+            headers[key.strip()] = val.strip()
+
+    # Parse endpoints
+    endpoints = []
+
+    # --spec: load endpoints from an OpenAPI / Swagger spec
+    if args.spec:
+        try:
+            from openapi_loader import load_openapi
+            spec_eps = load_openapi(args.spec)
+            endpoints.extend(spec_eps)
+            log(f"Loaded {len(spec_eps)} endpoints from spec: {args.spec}", "pass")
+        except Exception as e:
+            log(f"Failed to load spec '{args.spec}': {e}", "fail")
+            sys.exit(1)
+
+    # -e: manual comma-separated paths (merged on top of spec endpoints)
+    if args.endpoints:
+        for ep in args.endpoints.split(','):
+            ep = ep.strip()
+            if ep:
+                endpoints.append({"path": ep, "method": "GET"})
+
+    if not endpoints:
+        # Default discovery endpoints when neither --spec nor -e is supplied
+        endpoints = [{"path": "/", "method": "GET"},
+                     {"path": "/api", "method": "GET"},
+                     {"path": "/api/v1", "method": "GET"},
+                     {"path": "/users", "method": "GET"},
+                     {"path": "/api/users", "method": "GET"}]
+
+    session = Session(args.url, headers=headers, timeout=args.timeout, verify=not args.no_verify)
+
+    # Verify connectivity
+    resp = session.get('/')
+    if not resp:
+        log(f"Cannot connect to {args.url}", "fail")
+        sys.exit(1)
+    log(f"Target: {args.url} — Status: {resp.status_code}", "pass")
+
+    # Select tests
+    ALL_TESTS = {
+        'API1': TestBOLA, 'API2': TestBrokenAuth, 'API3': TestBOPLA,
+        'API4': TestResourceConsumption, 'API5': TestBFLA, 'API6': TestSensitiveFlows,
+        'API7': TestSSRF, 'API8': TestMisconfig, 'API9': TestInventory,
+        'API10': TestUnsafeConsumption,
+    }
+
+    tests_to_run = ALL_TESTS
+    if args.tests:
+        selected = [t.strip().upper() for t in args.tests.split(',')]
+        tests_to_run = {k: v for k, v in ALL_TESTS.items() if k in selected}
+
+    # Execute
+    all_results = {"target": args.url, "timestamp": datetime.datetime.now().isoformat(),
+                   "version": VERSION, "tests": []}
+
+    for test_id, test_class in tests_to_run.items():
+        print(f"\n{'='*60}")
+        result = test_class.run(session, endpoints)
+        all_results["tests"].append(result)
+
+    # Report
+    print(f"\n{'='*60}")
+    total_vulns, score = Reporter.save(all_results, urlparse(args.url).netloc)
+
+    # Summary
+    print(f"\n{C.BOLD}{'='*60}{C.N}")
+    print(f"  REST Secure Scan Complete")
+    print(f"{'='*60}")
+    print(f"  Target:          {args.url}")
+    print(f"  Tests Executed:  {len(all_results['tests'])}")
+    print(f"  Vulnerabilities: {total_vulns}")
+    score_color = C.G if score >= 80 else C.Y if score >= 60 else C.R
+    print(f"  Security Score:  {score_color}{score}%{C.N}")
+    print(f"  Reports:         {OUTPUT_DIR}/")
+    print(f"{'='*60}\n")
+
+
+if __name__ == "__main__":
+    main()
