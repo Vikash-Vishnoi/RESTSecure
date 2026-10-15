@@ -5,3 +5,4 @@ restsecure_reports/
 venv/
 stages_data/
 stage*.bat
+docker-compose.yml
