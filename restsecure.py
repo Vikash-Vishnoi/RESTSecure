@@ -776,3 +776,56 @@ class TestUnsafeConsumption:
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# REPORTING
+# ═══════════════════════════════════════════════════════════════════════
+class Reporter:
+    """Generate JSON and HTML reports."""
+
+    @staticmethod
+    def save(data, target):
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        safe = re.sub(r'[^\w\-.]', '_', target)
+
+        # JSON
+        jpath = OUTPUT_DIR / f"restsecure-{safe}-{ts}.json"
+        with open(jpath, 'w') as f:
+            json.dump(data, f, indent=2, default=str)
+        log(f"JSON report: {jpath}", "pass")
+
+        # HTML
+        hpath = OUTPUT_DIR / f"restsecure-{safe}-{ts}.html"
+        findings_html = ""
+        total_vulns = 0
+        for test in data.get("tests", []):
+            count = len(test.get("findings", []))
+            total_vulns += count
+            sev_color = {"CRITICAL": "#ff4757", "HIGH": "#ff6348", "MEDIUM": "#ffa502", "LOW": "#2ed573"}.get(test.get("severity"), "#999")
+            findings_html += f"""<h2 style="color:#00d4ff;border-bottom:1px solid #1e2d3e;padding-bottom:6px;margin-top:20px">
+                {test['test']} — {test['name']} <span style="color:{sev_color};font-size:0.8em">[{test['severity']}]</span></h2>
+                <p style="color:#7a8ea0">Findings: {count}</p>"""
+            for f in test.get("findings", []):
+                findings_html += f"<div style='background:#111922;border:1px solid #1e2d3e;border-radius:6px;padding:12px;margin:8px 0;font-size:13px'>"
+                for k, v in f.items():
+                    findings_html += f"<div><strong style='color:#f0a500'>{k}:</strong> <span style='color:#c8d6e5'>{v}</span></div>"
+                findings_html += "</div>"
+
+        score = max(0, 100 - (total_vulns * 5))
+        html = f"""<!DOCTYPE html><html><head><meta charset="UTF-8"><title>REST Secure Report</title>
+<style>body{{font-family:monospace;background:#0a0e14;color:#c8d6e5;padding:24px;max-width:960px;margin:0 auto}}
+h1{{color:#00d4ff}}.stat{{display:inline-block;padding:8px 16px;margin:4px;border:1px solid #1e2d3e;border-radius:6px}}</style></head>
+<body><h1>REST Secure Security Report</h1>
+<p>Target: {data.get('target','')}</p><p>Date: {data.get('timestamp','')}</p>
+<div class="stat" style="color:#00d4ff;font-size:1.5em">Score: {score}%</div>
+<div class="stat" style="color:#ff4757">Vulnerabilities: {total_vulns}</div>
+<div class="stat">Tests: {len(data.get('tests',[]))}</div>
+{findings_html}
+<p style="margin-top:24px;color:#4a5d70;font-size:12px">REST Secure v{VERSION} — github.com/Vikash-Vishnoi/RESTSecure</p>
+</body></html>"""
+        with open(hpath, 'w') as f:
+            f.write(html)
+        log(f"HTML report: {hpath}", "pass")
+        return total_vulns, score
+
+
+# ═══════════════════════════════════════════════════════════════════════
